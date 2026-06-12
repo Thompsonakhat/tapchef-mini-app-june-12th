@@ -4,6 +4,10 @@
     "file": "src/commands/about.js"
   },
   {
+    "name": "event",
+    "file": "src/commands/event.js"
+  },
+  {
     "name": "help",
     "file": "src/commands/help.js"
   },

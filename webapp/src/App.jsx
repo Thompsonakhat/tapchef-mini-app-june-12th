@@ -199,6 +199,7 @@ export default function App() {
 
   const mealsReady = state ? Math.floor((state.daily.tappedToday - state.daily.mealsCookedToday * 20) / 20) : 0;
   const unlockedAchievements = state?.achievements?.filter((item) => item.unlocked) || [];
+  const weekendEvent = state?.weekendEvent;
 
   return (
     <div className="min-h-screen px-4 pt-4 pb-8" style={{ paddingTop: "max(1rem, env(safe-area-inset-top))", paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
@@ -208,7 +209,7 @@ export default function App() {
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-orange-200/80">TapChef</p>
               <h1 className="mt-1 text-3xl font-black leading-none">Cook fast. Tap smart.</h1>
-              <p className="mt-2 text-sm text-orange-50/80">Earn Chef Points, unlock badges, collect recipes, and style your kitchen.</p>
+              <p className="mt-2 text-sm text-orange-50/80">Earn Chef Points, unlock badges, collect recipes, style your kitchen, and jump into the Weekend Cook-Off.</p>
             </div>
             <div className="rounded-2xl bg-white/10 px-3 py-2 text-right backdrop-blur">
               <div className="text-[11px] uppercase tracking-wide text-orange-100/70">Streak</div>
@@ -217,10 +218,11 @@ export default function App() {
           </div>
         </header>
 
-        <nav className="grid grid-cols-3 gap-2 rounded-2xl bg-white/5 p-1 sm:grid-cols-6">
+        <nav className="grid grid-cols-3 gap-2 rounded-2xl bg-white/5 p-1 sm:grid-cols-7">
           {[
             ["game", "Game"],
             ["tasks", "Tasks"],
+            ["event", "Event"],
             ["achievements", "Badges"],
             ["recipes", "Recipes"],
             ["shop", "Shop"],
@@ -318,6 +320,38 @@ export default function App() {
                     </div>
                   </div>
                 ))}
+              </section>
+            ) : null}
+
+            {tab === "event" ? (
+              <section className="space-y-3">
+                <div className="rounded-3xl border border-orange-300/20 bg-orange-500/10 p-4">
+                  <p className="text-xs uppercase tracking-[0.22em] text-orange-100/70">Seasonal event</p>
+                  <h2 className="mt-2 text-2xl font-black">{weekendEvent?.name || "Weekend Cook-Off"}</h2>
+                  <p className="mt-2 text-sm text-orange-50/80">{weekendEvent?.description}</p>
+                  <p className="mt-3 text-xs text-orange-100/70">{weekendEvent?.disclaimer}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard label="Tasks done" value={`${weekendEvent?.completedCount || 0}/${weekendEvent?.tasks?.length || 0}`} />
+                  <StatCard label="Reward pool" value={`${weekendEvent?.totalRewardChefPoints || 0} CP`} />
+                </div>
+                <div className="space-y-3">
+                  {(weekendEvent?.tasks || []).map((task) => (
+                    <div key={task.id} className="rounded-3xl border border-white/10 bg-white/8 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-base font-semibold">{task.label}</p>
+                          <p className="mt-1 text-sm text-orange-50/70">{Math.min(task.progress, task.target)}/{task.target}</p>
+                          <p className="mt-2 text-xs uppercase tracking-wide text-orange-100/70">Reward {task.rewardChefPoints} fictional Chef Points</p>
+                        </div>
+                        <span className={cx("rounded-full px-3 py-1 text-xs font-bold", task.completed ? "bg-emerald-400/20 text-emerald-100" : "bg-white/10 text-orange-50/70")}>{task.completed ? "Complete" : "Active"}</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/20">
+                        <div className="h-full rounded-full bg-orange-400" style={{ width: `${Math.min(100, Math.round((task.progress / task.target) * 100))}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </section>
             ) : null}
 
@@ -444,7 +478,18 @@ export default function App() {
                 <ProfileRow label="Daily streak" value={state.streakCount} />
                 <ProfileRow label="Badges unlocked" value={`${unlockedAchievements.length}/${state.achievements.length}`} />
                 <ProfileRow label="Recipes unlocked" value={`${state.recipes.filter((item) => item.unlocked).length}/${state.recipes.length}`} />
+                <ProfileRow label="Weekend event" value={`${weekendEvent?.completedCount || 0}/${weekendEvent?.tasks?.length || 0} tasks`} />
                 <ProfileRow label="Sound" value={state.settings?.soundEnabled !== false ? "On" : "Off"} />
+                <div className="rounded-2xl bg-black/15 px-4 py-3">
+                  <p className="text-sm text-orange-50/70">Event progress</p>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/20">
+                    <div
+                      className="h-full rounded-full bg-orange-400"
+                      style={{ width: `${weekendEvent?.tasks?.length ? Math.round(((weekendEvent.completedCount || 0) / weekendEvent.tasks.length) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-orange-50/70">{weekendEvent?.disclaimer}</p>
+                </div>
               </section>
             ) : null}
           </>

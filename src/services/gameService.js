@@ -26,6 +26,18 @@ const KITCHEN_THEMES = [
   { id: "midnight_diner", name: "Midnight Diner", cost: 55, description: "A sleek late-night kitchen with neon trim." },
   { id: "garden_glow", name: "Garden Glow", cost: 80, description: "A bright greenhouse kitchen with leafy accents." }
 ];
+const WEEKEND_EVENT = {
+  id: "weekend_cookoff",
+  name: "Weekend Cook-Off",
+  description: "A limited-time cooking challenge with fictional Chef Points only.",
+  disclaimer: "All Chef Points and event rewards are fictional in-game rewards only.",
+  rewardsLabel: "Weekend reward pool",
+  tasks: [
+    { id: "event_cook_5", label: "Cook 5 meals", type: "meals_total", target: 5, rewardChefPoints: 40 },
+    { id: "event_tap_150", label: "Tap 150 ingredients", type: "tap_total", target: 150, rewardChefPoints: 60 },
+    { id: "event_streak_2", label: "Keep a 2 day streak", type: "streak", target: 2, rewardChefPoints: 30 }
+  ]
+};
 
 function safeErr(err) {
   return (
@@ -82,6 +94,7 @@ function buildDefaultUser(tgUser) {
     ownedThemeIds: [],
     activeThemeId: "classic_kitchen",
     soundEnabled: true,
+    eventRewardClaimedIds: [],
     createdAt: now,
     updatedAt: now
   };
@@ -169,6 +182,36 @@ function buildThemes(user) {
   ];
 }
 
+function buildWeekendEvent(user) {
+  const claimed = new Set(user.eventRewardClaimedIds || []);
+  const eventTasks = WEEKEND_EVENT.tasks.map((task) => {
+    const progress = task.type === "tap_total"
+      ? Number(user.totalTaps || 0)
+      : task.type === "meals_total"
+      ? Number(user.mealsCooked || 0)
+      : Number(user.streakCount || 0);
+    const completed = progress >= task.target;
+    return {
+      ...task,
+      progress,
+      completed,
+      rewardClaimed: claimed.has(task.id)
+    };
+  });
+
+  return {
+    id: WEEKEND_EVENT.id,
+    name: WEEKEND_EVENT.name,
+    description: WEEKEND_EVENT.description,
+    disclaimer: WEEKEND_EVENT.disclaimer,
+    rewardsLabel: WEEKEND_EVENT.rewardsLabel,
+    totalRewardChefPoints: WEEKEND_EVENT.tasks.reduce((sum, task) => sum + task.rewardChefPoints, 0),
+    completedCount: eventTasks.filter((task) => task.completed).length,
+    rewardClaimedCount: eventTasks.filter((task) => task.rewardClaimed).length,
+    tasks: eventTasks
+  };
+}
+
 function serializeState(user, daily, extra = {}) {
   const hydratedDaily = evaluateTasks({ ...daily });
   return {
@@ -204,6 +247,7 @@ function serializeState(user, daily, extra = {}) {
     achievements: buildAchievements(user),
     recipes: buildRecipes(user),
     themes: buildThemes(user),
+    weekendEvent: buildWeekendEvent(user),
     newlyUnlockedAchievementIds: extra.newlyUnlockedAchievementIds || []
   };
 }
@@ -269,6 +313,7 @@ export async function createGameServices(cfg) {
               ownedThemeIds: insert.ownedThemeIds,
               activeThemeId: insert.activeThemeId,
               soundEnabled: insert.soundEnabled,
+              eventRewardClaimedIds: insert.eventRewardClaimedIds,
               updatedAt: insert.updatedAt
             }
           },
@@ -281,6 +326,7 @@ export async function createGameServices(cfg) {
         user.unlockedRecipeIds ||= [];
         user.ownedThemeIds ||= [];
         user.activeThemeId ||= "classic_kitchen";
+        user.eventRewardClaimedIds ||= [];
         if (typeof user.soundEnabled !== "boolean") user.soundEnabled = true;
       }
       return user;
@@ -535,7 +581,9 @@ export async function createGameServices(cfg) {
       completedTasks: state.tasks.filter((task) => task.completed).length,
       totalTasks: state.tasks.length,
       unlockedAchievements: state.achievements.filter((achievement) => achievement.unlocked).length,
-      totalAchievements: state.achievements.length
+      totalAchievements: state.achievements.length,
+      completedEventTasks: state.weekendEvent.tasks.filter((task) => task.completed).length,
+      totalEventTasks: state.weekendEvent.tasks.length
     };
   }
 
@@ -672,6 +720,8 @@ export async function createGameServices(cfg) {
     const lower = lastUser.toLowerCase();
     const answer = lower.includes("leaderboard")
       ? "Use /leaderboard to see the top chefs. The leaderboard also shows your own rank even outside the top 10."
+      : lower.includes("event") || lower.includes("cook-off")
+      ? "Use /event to read about Weekend Cook-Off, then open the Mini App to track event progress. Event rewards are fictional Chef Points only."
       : lower.includes("profile")
       ? "Use /profile for your quick stats, or open the profile tab in TapChef for the full view."
       : lower.includes("achievement")
