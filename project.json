@@ -2,32 +2,67 @@
   "projectId": "b848ea9a-627f-4b35-bd75-a4607fbd06f6",
   "commands": [
     {
-      "name": "about",
-      "file": "src/commands/about.js"
+      "command": "/about",
+      "description": "Explains what TapChef is and how it works.",
+      "usage": "/about",
+      "examples": [
+        "User: /about → Bot: TapChef is a playful cooking game for Telegram."
+      ],
+      "notes": "Mentions fictional Chef Points only."
     },
     {
-      "name": "help",
-      "file": "src/commands/help.js"
+      "command": "/help",
+      "description": "Shows the command list and highlights TapChef gameplay systems.",
+      "usage": "/help",
+      "examples": [
+        "User: /help → Bot: Commands: /start, /help, /play, /profile, /leaderboard, /about, /reset. In the Mini App you can earn fictional Chef Points, unlock achievement badges..."
+      ],
+      "notes": "Now mentions achievements, recipe book, kitchen shop, sound toggle, and personal leaderboard rank."
     },
     {
-      "name": "leaderboard",
-      "file": "src/commands/leaderboard.js"
+      "command": "/leaderboard",
+      "description": "Shows top chefs and the player’s own rank.",
+      "usage": "/leaderboard",
+      "examples": [
+        "User: /leaderboard → Bot: Top chefs: 1. Mia 140 | 2. Jay 115 | 3. Ana 98. Your rank: 27."
+      ],
+      "notes": "Own rank is shown even when the player is outside the top 10."
     },
     {
-      "name": "play",
-      "file": "src/commands/play.js"
+      "command": "/play",
+      "description": "Opens the TapChef Mini App.",
+      "usage": "/play",
+      "examples": [
+        "User: /play → Bot: Open TapChef and start cooking."
+      ],
+      "notes": "Requires PUBLIC_BASE_URL so the bot can build the /app URL."
     },
     {
-      "name": "profile",
-      "file": "src/commands/profile.js"
+      "command": "/profile",
+      "description": "Shows the player’s Chef Points, energy, streak, meals, and task progress.",
+      "usage": "/profile",
+      "examples": [
+        "User: /profile → Bot: Chef Points: 25 | Energy: 18/30 | Streak: 2 | Meals: 1 | Tasks: 2/3"
+      ],
+      "notes": "Uses MongoDB when available, or in-memory fallback if not configured."
     },
     {
-      "name": "reset",
-      "file": "src/commands/reset.js"
+      "command": "/reset",
+      "description": "Clears the user’s saved chat memory.",
+      "usage": "/reset",
+      "examples": [
+        "User: /reset → Bot: Your chat memory is cleared."
+      ],
+      "notes": "This resets long-term memory for bot chat context, not game progress."
     },
     {
-      "name": "start",
-      "file": "src/commands/start.js"
+      "command": "/start",
+      "description": "Welcomes the player and explains TapChef in a short, friendly way.",
+      "usage": "/start",
+      "examples": [
+        "User: /start → Bot: Welcome to TapChef. Tap ingredients, cook meals, finish daily tasks, and climb the leaderboard."
+      ],
+      "notes": "Shows the Mini App button when PUBLIC_BASE_URL is configured."
     }
   ],
   "aiMessages": [
@@ -74,6 +109,22 @@
       "id": "msg_mqabx7py_8cv32r",
       "createdAt": "2026-06-12T02:50:37.130Z",
       "kind": "agent_request",
+      "source": "generatedbot"
+    },
+    {
+      "role": "user",
+      "content": "Improve TapChef with multiple upgrades.\n\nPlease add these changes without rebuilding the whole project from scratch:\n\n1. Add an achievement system with badges for first tap, 100 taps, 10 meals cooked, and 7-day streak.\n2. Add a recipe book screen where users can unlock simple fictional recipes using Chef Points.\n3. Add a small kitchen shop where users can spend fictional Chef Points on cosmetic kitchen themes only.\n4. Add a sound toggle setting in the Mini App UI.\n5. Improve the leaderboard so it shows the user’s own rank even if they are not in the top 10.\n6. Update /help so it explains achievements, recipe book, kitchen shop, sound toggle, and leaderboard ranking.\n\nImportant:\n- Keep Chef Points fictional.\n- Do not add real money, wallets, crypto, or token rewards.\n- Preserve the existing bot commands, game logic, profile, energy system, streaks, tasks, and leaderboard.\n- Make this a targeted update and only modify the files needed."
+    },
+    {
+      "role": "assistant",
+      "content": "Added achievements, recipe unlocks, cosmetic theme shop, sound toggle, and improved leaderboard rank handling with targeted backend and Mini App updates only.\n\nFiles touched (7): .env.sample, package.json, src/commands/help.js, src/lib/botProfile.js, src/server.js, src/services/gameService.js…\nValidation: ✅ project passes syntax/basic checks after this edit."
+    },
+    {
+      "role": "assistant",
+      "content": "Update complete. I applied the requested changes safely.\n\nReview the project files and test the changed behavior.\n\nFiles changed:\n- .env.sample\n- package.json\n- src/commands/help.js\n- src/lib/botProfile.js\n- webapp/src/App.jsx\n- src/server.js\n- src/services/gameService.js\n- src/lib/ai.js\n\nCost summary:\n- Charged: $0.76\n- Balance: $10148.23",
+      "id": "local_mqabzgqs_h4hue9",
+      "createdAt": "2026-06-12T02:52:23.044Z",
+      "kind": "agent_result",
       "source": "generatedbot"
     }
   ],
@@ -154,9 +205,9 @@
     {
       "key": "PUBLIC_BASE_URL",
       "title": "Public Base URL",
-      "description": "Base deployed URL for the service. The bot appends /app automatically.",
-      "usage": "Used to build the Telegram Mini App button URL.",
-      "howToGet": "Use your deployed Render or CookMyBots service URL.",
+      "description": "Base deployed URL for the Mini App service.",
+      "usage": "The bot appends /app automatically and the Mini App uses the same backend for gameplay APIs.",
+      "howToGet": "Use your deployed CookMyBots or Render base URL.",
       "example": "https://tapchef-bot.onrender.com",
       "isSecret": false,
       "required": false
@@ -214,12 +265,12 @@
     },
     {
       "command": "/help",
-      "description": "Shows the public command list and quick gameplay help.",
+      "description": "Shows the command list and highlights TapChef gameplay systems.",
       "usage": "/help",
       "examples": [
-        "User: /help → Bot: Commands: /start, /help, /play, /profile, /leaderboard, /about, /reset."
+        "User: /help → Bot: Commands: /start, /help, /play, /profile, /leaderboard, /about, /reset. In the Mini App you can earn fictional Chef Points, unlock achievement badges..."
       ],
-      "notes": "Kept short for Telegram readability."
+      "notes": "Now mentions achievements, recipe book, kitchen shop, sound toggle, and personal leaderboard rank."
     },
     {
       "command": "/play",
@@ -241,12 +292,12 @@
     },
     {
       "command": "/leaderboard",
-      "description": "Shows the top TapChef players by Chef Points.",
+      "description": "Shows top chefs and the player’s own rank.",
       "usage": "/leaderboard",
       "examples": [
-        "User: /leaderboard → Bot: Top chefs: 1. Mia 140 | 2. Jay 115 | 3. Ana 98. Your rank: 4."
+        "User: /leaderboard → Bot: Top chefs: 1. Mia 140 | 2. Jay 115 | 3. Ana 98. Your rank: 27."
       ],
-      "notes": "Also available in the Mini App leaderboard tab."
+      "notes": "Own rank is shown even when the player is outside the top 10."
     },
     {
       "command": "/about",
@@ -868,5 +919,6 @@
       "totalUsd": 0.017584
     },
     "answerMode": "explain"
-  }
+  },
+  "title": "TapChef Mini App June 12th"
 }
