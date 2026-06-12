@@ -1,0 +1,30 @@
+[
+  {
+    "name": "about",
+    "file": "src/commands/about.js"
+  },
+  {
+    "name": "help",
+    "file": "src/commands/help.js"
+  },
+  {
+    "name": "leaderboard",
+    "file": "src/commands/leaderboard.js"
+  },
+  {
+    "name": "play",
+    "file": "src/commands/play.js"
+  },
+  {
+    "name": "profile",
+    "file": "src/commands/profile.js"
+  },
+  {
+    "name": "reset",
+    "file": "src/commands/reset.js"
+  },
+  {
+    "name": "start",
+    "file": "src/commands/start.js"
+  }
+]
