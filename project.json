@@ -2,36 +2,76 @@
   "projectId": "b848ea9a-627f-4b35-bd75-a4607fbd06f6",
   "commands": [
     {
-      "name": "about",
-      "file": "src/commands/about.js"
+      "command": "/about",
+      "description": "Explains what TapChef is and how it works.",
+      "usage": "/about",
+      "examples": [
+        "User: /about → Bot: TapChef is a playful cooking game for Telegram."
+      ],
+      "notes": "Mentions fictional Chef Points only."
     },
     {
-      "name": "event",
-      "file": "src/commands/event.js"
+      "command": "/event",
+      "description": "Explains the current Weekend Cook-Off event and tells players to open the Mini App to participate.",
+      "usage": "/event",
+      "examples": [
+        "User: /event → Bot: Weekend Cook-Off is live. Complete the limited-time challenge by cooking 5 meals, tapping 150 ingredients, and keeping a 2 day streak."
+      ],
+      "notes": "Includes safe wording that all Chef Points and rewards are fictional in-game rewards only."
     },
     {
-      "name": "help",
-      "file": "src/commands/help.js"
+      "command": "/help",
+      "description": "Shows the public command list and explains TapChef gameplay systems, including seasonal events.",
+      "usage": "/help",
+      "examples": [
+        "User: /help → Bot: Commands: /start, /help, /play, /profile, /leaderboard, /event, /about, /reset..."
+      ],
+      "notes": "Now includes the /event command and seasonal event guidance."
     },
     {
-      "name": "leaderboard",
-      "file": "src/commands/leaderboard.js"
+      "command": "/leaderboard",
+      "description": "Shows top chefs and the player’s own rank.",
+      "usage": "/leaderboard",
+      "examples": [
+        "User: /leaderboard → Bot: Top chefs: 1. Mia 140 | 2. Jay 115 | 3. Ana 98. Your rank: 27."
+      ],
+      "notes": "Own rank is shown even when the player is outside the top 10."
     },
     {
-      "name": "play",
-      "file": "src/commands/play.js"
+      "command": "/play",
+      "description": "Opens the TapChef Mini App.",
+      "usage": "/play",
+      "examples": [
+        "User: /play → Bot: Open TapChef and start cooking."
+      ],
+      "notes": "Requires PUBLIC_BASE_URL so the bot can build the /app URL."
     },
     {
-      "name": "profile",
-      "file": "src/commands/profile.js"
+      "command": "/profile",
+      "description": "Shows the player’s Chef Points, energy, streak, meals, and task progress.",
+      "usage": "/profile",
+      "examples": [
+        "User: /profile → Bot: Chef Points: 25 | Energy: 18/30 | Streak: 2 | Meals: 1 | Tasks: 2/3"
+      ],
+      "notes": "Uses MongoDB when available, or in-memory fallback if not configured."
     },
     {
-      "name": "reset",
-      "file": "src/commands/reset.js"
+      "command": "/reset",
+      "description": "Clears the user’s saved chat memory.",
+      "usage": "/reset",
+      "examples": [
+        "User: /reset → Bot: Your chat memory is cleared."
+      ],
+      "notes": "This resets long-term memory for bot chat context, not game progress."
     },
     {
-      "name": "start",
-      "file": "src/commands/start.js"
+      "command": "/start",
+      "description": "Welcomes the player and explains TapChef in a short, friendly way.",
+      "usage": "/start",
+      "examples": [
+        "User: /start → Bot: Welcome to TapChef. Tap ingredients, cook meals, finish daily tasks, and climb the leaderboard."
+      ],
+      "notes": "Shows the Mini App button when PUBLIC_BASE_URL is configured."
     }
   ],
   "aiMessages": [
@@ -93,6 +133,14 @@
       "content": "Update complete. I applied the requested changes safely.\n\nReview the project files and test the changed behavior.\n\nFiles changed:\n- .env.sample\n- package.json\n- src/commands/help.js\n- src/lib/botProfile.js\n- webapp/src/App.jsx\n- src/server.js\n- src/services/gameService.js\n- src/lib/ai.js\n\nCost summary:\n- Charged: $0.76\n- Balance: $10148.23",
       "id": "local_mqabzgqs_h4hue9",
       "createdAt": "2026-06-12T02:52:23.044Z",
+      "kind": "agent_result",
+      "source": "generatedbot"
+    },
+    {
+      "role": "assistant",
+      "content": "Update complete. I applied the requested changes safely.\n\nReview the project files and test the changed behavior.\n\nFiles changed:\n- package.json\n- .env.sample\n- src/commands/help.js\n- src/commands/event.js\n- src/lib/botProfile.js\n- src/services/gameService.js\n- src/server.js\n- webapp/src/App.jsx\n\nCost summary:\n- Charged: $0.81\n- Balance: $10147.42",
+      "id": "local_mqacjirq_pruin3",
+      "createdAt": "2026-06-12T03:07:58.790Z",
       "kind": "agent_result",
       "source": "generatedbot"
     }
@@ -175,7 +223,7 @@
       "key": "PUBLIC_BASE_URL",
       "title": "Public Base URL",
       "description": "Base deployed URL for the Mini App service.",
-      "usage": "The bot appends /app automatically and the Mini App uses the same backend for gameplay APIs.",
+      "usage": "The bot appends /app automatically and /event relies on the Mini App being reachable through /play.",
       "howToGet": "Use your deployed CookMyBots or Render base URL.",
       "example": "https://tapchef-bot.onrender.com",
       "isSecret": false,
@@ -234,12 +282,12 @@
     },
     {
       "command": "/help",
-      "description": "Shows the command list and highlights TapChef gameplay systems.",
+      "description": "Shows the public command list and explains TapChef gameplay systems, including seasonal events.",
       "usage": "/help",
       "examples": [
-        "User: /help → Bot: Commands: /start, /help, /play, /profile, /leaderboard, /about, /reset. In the Mini App you can earn fictional Chef Points, unlock achievement badges..."
+        "User: /help → Bot: Commands: /start, /help, /play, /profile, /leaderboard, /event, /about, /reset..."
       ],
-      "notes": "Now mentions achievements, recipe book, kitchen shop, sound toggle, and personal leaderboard rank."
+      "notes": "Now includes the /event command and seasonal event guidance."
     },
     {
       "command": "/play",
@@ -285,6 +333,15 @@
         "User: /reset → Bot: Your chat memory is cleared."
       ],
       "notes": "This resets long-term memory for bot chat context, not game progress."
+    },
+    {
+      "command": "/event",
+      "description": "Explains the current Weekend Cook-Off event and tells players to open the Mini App to participate.",
+      "usage": "/event",
+      "examples": [
+        "User: /event → Bot: Weekend Cook-Off is live. Complete the limited-time challenge by cooking 5 meals, tapping 150 ingredients, and keeping a 2 day streak."
+      ],
+      "notes": "Includes safe wording that all Chef Points and rewards are fictional in-game rewards only."
     }
   ],
   "runStatuses": {

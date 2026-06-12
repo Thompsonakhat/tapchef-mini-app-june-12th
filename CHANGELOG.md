@@ -2,6 +2,11 @@
 
 All notable changes to this bot project are recorded here.
 
+## 2026-06-12 03:07:56. UTC
+- Request: Improve TapChef with a new seasonal event update. Please add these changes without rebuilding the project from scratch: 1. Add a “Weekend Cook-Off” event screen in the Mini App where users can see a limited-time cooking…
+- Summary: Added the Weekend Cook-Off seasonal event as a targeted update. This includes a new Mini App event screen, event progress on profile, a new /event Telegram command, updated /help text, and clear fictional-rewards wordin…
+- Files: .env.sample, package.json, src/commands/event.js, src/commands/help.js, src/lib/botProfile.js, src/server.js, src/services/gameService.js, webapp/src/App.jsx
+
 ## 2026-06-12 02:52:20. UTC
 - Request: Improve TapChef with multiple upgrades. Please add these changes without rebuilding the whole project from scratch: 1. Add an achievement system with badges for first tap, 100 taps, 10 meals cooked, and 7-day streak. 2.…
 - Summary: Added achievements, recipe unlocks, cosmetic theme shop, sound toggle, and improved leaderboard rank handling with targeted backend and Mini App updates only.
