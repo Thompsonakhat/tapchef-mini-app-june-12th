@@ -10,6 +10,22 @@ const DAILY_TASKS = [
   { id: "tap_50", label: "Tap 50 ingredients", type: "tap", target: 50 },
   { id: "cook_3", label: "Cook 3 meals", type: "meal", target: 3 }
 ];
+const ACHIEVEMENTS = [
+  { id: "first_tap", label: "First Tap", badge: "Starter Spoon", type: "tap_total", target: 1, description: "Make your very first ingredient tap." },
+  { id: "tap_100", label: "100 Taps", badge: "Golden Whisk", type: "tap_total", target: 100, description: "Reach 100 total taps." },
+  { id: "meals_10", label: "10 Meals", badge: "Pan Pro", type: "meals_total", target: 10, description: "Cook 10 meals in total." },
+  { id: "streak_7", label: "7 Day Streak", badge: "Fire Apron", type: "streak", target: 7, description: "Keep your kitchen streak alive for 7 days." }
+];
+const RECIPES = [
+  { id: "cloud_omelet", name: "Cloud Omelet", cost: 25, rewardText: "A fluffy breakfast favorite from the TapChef test kitchen." },
+  { id: "meteor_pasta", name: "Meteor Pasta", cost: 45, rewardText: "A quick cosmic pasta tossed with sparkle sauce." },
+  { id: "sunset_stew", name: "Sunset Stew", cost: 70, rewardText: "A slow-simmered stew with glowing garden vegetables." }
+];
+const KITCHEN_THEMES = [
+  { id: "copper_cozy", name: "Copper Cozy", cost: 30, description: "Warm copper counters and soft lantern light." },
+  { id: "midnight_diner", name: "Midnight Diner", cost: 55, description: "A sleek late-night kitchen with neon trim." },
+  { id: "garden_glow", name: "Garden Glow", cost: 80, description: "A bright greenhouse kitchen with leafy accents." }
+];
 
 function safeErr(err) {
   return (
@@ -61,6 +77,11 @@ function buildDefaultUser(tgUser) {
     streakCount: 1,
     lastActiveDate: todayKey(),
     lastStreakDate: todayKey(),
+    unlockedAchievementIds: [],
+    unlockedRecipeIds: [],
+    ownedThemeIds: [],
+    activeThemeId: "classic_kitchen",
+    soundEnabled: true,
     createdAt: now,
     updatedAt: now
   };
@@ -90,7 +111,65 @@ function evaluateTasks(daily) {
   return daily;
 }
 
-function serializeState(user, daily) {
+function evaluateAchievements(user) {
+  const unlocked = new Set(user.unlockedAchievementIds || []);
+  const newlyUnlocked = [];
+
+  for (const achievement of ACHIEVEMENTS) {
+    if (unlocked.has(achievement.id)) continue;
+
+    const reached = achievement.type === "tap_total"
+      ? Number(user.totalTaps || 0) >= achievement.target
+      : achievement.type === "meals_total"
+      ? Number(user.mealsCooked || 0) >= achievement.target
+      : Number(user.streakCount || 0) >= achievement.target;
+
+    if (reached) {
+      unlocked.add(achievement.id);
+      newlyUnlocked.push(achievement.id);
+    }
+  }
+
+  user.unlockedAchievementIds = [...unlocked];
+  return newlyUnlocked;
+}
+
+function buildAchievements(user) {
+  const unlocked = new Set(user.unlockedAchievementIds || []);
+  return ACHIEVEMENTS.map((achievement) => ({
+    ...achievement,
+    unlocked: unlocked.has(achievement.id)
+  }));
+}
+
+function buildRecipes(user) {
+  const unlocked = new Set(user.unlockedRecipeIds || []);
+  return RECIPES.map((recipe) => ({
+    ...recipe,
+    unlocked: unlocked.has(recipe.id)
+  }));
+}
+
+function buildThemes(user) {
+  const owned = new Set(["classic_kitchen", ...(user.ownedThemeIds || [])]);
+  return [
+    {
+      id: "classic_kitchen",
+      name: "Classic Kitchen",
+      cost: 0,
+      description: "The default TapChef kitchen look.",
+      owned: true,
+      active: (user.activeThemeId || "classic_kitchen") === "classic_kitchen"
+    },
+    ...KITCHEN_THEMES.map((theme) => ({
+      ...theme,
+      owned: owned.has(theme.id),
+      active: user.activeThemeId === theme.id
+    }))
+  ];
+}
+
+function serializeState(user, daily, extra = {}) {
   const hydratedDaily = evaluateTasks({ ...daily });
   return {
     telegramUserId: user.telegramUserId,
@@ -103,6 +182,10 @@ function serializeState(user, daily) {
     currentEnergy: user.currentEnergy,
     maxEnergy: user.maxEnergy,
     streakCount: user.streakCount,
+    settings: {
+      soundEnabled: user.soundEnabled !== false
+    },
+    activeThemeId: user.activeThemeId || "classic_kitchen",
     daily: {
       dateKey: hydratedDaily.dateKey,
       tappedToday: hydratedDaily.tappedToday,
@@ -117,7 +200,11 @@ function serializeState(user, daily) {
         task.type === "meal" ? hydratedDaily.mealsCookedToday :
         hydratedDaily.openedKitchenToday ? 1 : 0,
       completed: hydratedDaily.completedTaskIds.includes(task.id)
-    }))
+    })),
+    achievements: buildAchievements(user),
+    recipes: buildRecipes(user),
+    themes: buildThemes(user),
+    newlyUnlockedAchievementIds: extra.newlyUnlockedAchievementIds || []
   };
 }
 
@@ -163,7 +250,7 @@ export async function createGameServices(cfg) {
         await db.collection("users").updateOne(
           { telegramUserId },
           {
-            $setOnInsert: { ...insert, createdAt: insert.createdAt },
+            $setOnInsert: { ...insert },
             $set: {
               username: insert.username,
               displayName: insert.displayName,
@@ -177,12 +264,24 @@ export async function createGameServices(cfg) {
               streakCount: insert.streakCount,
               lastActiveDate: insert.lastActiveDate,
               lastStreakDate: insert.lastStreakDate,
+              unlockedAchievementIds: insert.unlockedAchievementIds,
+              unlockedRecipeIds: insert.unlockedRecipeIds,
+              ownedThemeIds: insert.ownedThemeIds,
+              activeThemeId: insert.activeThemeId,
+              soundEnabled: insert.soundEnabled,
               updatedAt: insert.updatedAt
             }
           },
           { upsert: true }
         );
         user = await db.collection("users").findOne({ telegramUserId });
+      }
+      if (user) {
+        user.unlockedAchievementIds ||= [];
+        user.unlockedRecipeIds ||= [];
+        user.ownedThemeIds ||= [];
+        user.activeThemeId ||= "classic_kitchen";
+        if (typeof user.soundEnabled !== "boolean") user.soundEnabled = true;
       }
       return user;
     } catch (error) {
@@ -205,7 +304,7 @@ export async function createGameServices(cfg) {
       await db.collection("users").updateOne(
         { telegramUserId: user.telegramUserId },
         {
-          $setOnInsert: { },
+          $setOnInsert: {},
           $set: { ...user, updatedAt: new Date() }
         },
         { upsert: true }
@@ -244,7 +343,7 @@ export async function createGameServices(cfg) {
       await db.collection("userdailyprogress").updateOne(
         { telegramUserId: daily.telegramUserId, dateKey: daily.dateKey },
         {
-          $setOnInsert: { },
+          $setOnInsert: {},
           $set: { ...daily, updatedAt: new Date() }
         },
         { upsert: true }
@@ -281,13 +380,15 @@ export async function createGameServices(cfg) {
     activeUser.updatedAt = new Date();
     daily.updatedAt = new Date();
     daily = evaluateTasks(daily);
+    const newlyUnlockedAchievementIds = evaluateAchievements(activeUser);
 
     await saveUser(activeUser);
     await saveDaily(daily);
-    return serializeState(activeUser, daily);
+    return serializeState(activeUser, daily, { newlyUnlockedAchievementIds });
   }
 
   async function bootstrapPlayer(tgUser) {
+    console.log("[game] bootstrap", { telegramUserId: String(tgUser?.id || "") });
     return resolvePlayerState(String(tgUser.id), tgUser);
   }
 
@@ -316,10 +417,11 @@ export async function createGameServices(cfg) {
     daily.openedKitchenToday = true;
     daily.updatedAt = new Date();
     evaluateTasks(daily);
+    const newlyUnlockedAchievementIds = evaluateAchievements(user);
 
     await saveUser(user);
     await saveDaily(daily);
-    return serializeState(user, daily);
+    return serializeState(user, daily, { newlyUnlockedAchievementIds });
   }
 
   async function cookMeal(telegramUserId) {
@@ -338,7 +440,85 @@ export async function createGameServices(cfg) {
     daily.mealsCookedToday = Number(daily.mealsCookedToday || 0) + 1;
     daily.updatedAt = new Date();
     evaluateTasks(daily);
+    const newlyUnlockedAchievementIds = evaluateAchievements(user);
 
+    await saveUser(user);
+    await saveDaily(daily);
+    return serializeState(user, daily, { newlyUnlockedAchievementIds });
+  }
+
+  async function unlockRecipe(telegramUserId, recipeId) {
+    const user = await getUser(telegramUserId);
+    if (!user) throw new Error("Player not found.");
+
+    const recipe = RECIPES.find((item) => item.id === recipeId);
+    if (!recipe) throw new Error("Recipe not found.");
+
+    user.unlockedRecipeIds ||= [];
+    if (user.unlockedRecipeIds.includes(recipe.id)) throw new Error("Recipe already unlocked.");
+    if (Number(user.chefPoints || 0) < recipe.cost) throw new Error("Not enough Chef Points for that recipe.");
+
+    user.chefPoints -= recipe.cost;
+    user.unlockedRecipeIds = [...new Set([...user.unlockedRecipeIds, recipe.id])];
+    user.updatedAt = new Date();
+
+    const dateKey = todayKey();
+    const daily = (await getDaily(telegramUserId, dateKey)) || buildDefaultDaily(telegramUserId, dateKey);
+    await saveUser(user);
+    await saveDaily(daily);
+    return serializeState(user, daily);
+  }
+
+  async function buyTheme(telegramUserId, themeId) {
+    const user = await getUser(telegramUserId);
+    if (!user) throw new Error("Player not found.");
+
+    const theme = KITCHEN_THEMES.find((item) => item.id === themeId);
+    if (!theme) throw new Error("Theme not found.");
+
+    user.ownedThemeIds ||= [];
+    if (user.ownedThemeIds.includes(theme.id)) throw new Error("Theme already owned.");
+    if (Number(user.chefPoints || 0) < theme.cost) throw new Error("Not enough Chef Points for that theme.");
+
+    user.chefPoints -= theme.cost;
+    user.ownedThemeIds = [...new Set([...user.ownedThemeIds, theme.id])];
+    user.updatedAt = new Date();
+
+    const dateKey = todayKey();
+    const daily = (await getDaily(telegramUserId, dateKey)) || buildDefaultDaily(telegramUserId, dateKey);
+    await saveUser(user);
+    await saveDaily(daily);
+    return serializeState(user, daily);
+  }
+
+  async function setActiveTheme(telegramUserId, themeId) {
+    const user = await getUser(telegramUserId);
+    if (!user) throw new Error("Player not found.");
+
+    const owned = new Set(["classic_kitchen", ...(user.ownedThemeIds || [])]);
+    if (!owned.has(themeId)) throw new Error("Theme not owned yet.");
+
+    user.activeThemeId = themeId;
+    user.updatedAt = new Date();
+
+    const dateKey = todayKey();
+    const daily = (await getDaily(telegramUserId, dateKey)) || buildDefaultDaily(telegramUserId, dateKey);
+    await saveUser(user);
+    await saveDaily(daily);
+    return serializeState(user, daily);
+  }
+
+  async function updateSettings(telegramUserId, patch = {}) {
+    const user = await getUser(telegramUserId);
+    if (!user) throw new Error("Player not found.");
+
+    if (typeof patch.soundEnabled === "boolean") {
+      user.soundEnabled = patch.soundEnabled;
+    }
+    user.updatedAt = new Date();
+
+    const dateKey = todayKey();
+    const daily = (await getDaily(telegramUserId, dateKey)) || buildDefaultDaily(telegramUserId, dateKey);
     await saveUser(user);
     await saveDaily(daily);
     return serializeState(user, daily);
@@ -353,24 +533,38 @@ export async function createGameServices(cfg) {
       streakCount: state.streakCount,
       mealsCooked: state.mealsCooked,
       completedTasks: state.tasks.filter((task) => task.completed).length,
-      totalTasks: state.tasks.length
+      totalTasks: state.tasks.length,
+      unlockedAchievements: state.achievements.filter((achievement) => achievement.unlocked).length,
+      totalAchievements: state.achievements.length
     };
   }
 
   async function getLeaderboard(telegramUserId = "") {
-    let users = [];
+    let topUsers = [];
+    let rankPool = [];
+
     if (!db) {
-      users = [...memoryStore.users.values()];
+      rankPool = [...memoryStore.users.values()].sort((a, b) => {
+        if ((b.chefPoints || 0) !== (a.chefPoints || 0)) return (b.chefPoints || 0) - (a.chefPoints || 0);
+        if ((b.mealsCooked || 0) !== (a.mealsCooked || 0)) return (b.mealsCooked || 0) - (a.mealsCooked || 0);
+        return (b.streakCount || 0) - (a.streakCount || 0);
+      });
+      topUsers = rankPool.slice(0, 10);
     } else {
       try {
-        users = await db.collection("users").find({}, { projection: { displayName: 1, chefPoints: 1, mealsCooked: 1, streakCount: 1, telegramUserId: 1 } }).sort({ chefPoints: -1, mealsCooked: -1, streakCount: -1 }).limit(10).toArray();
+        topUsers = await db.collection("users")
+          .find({}, { projection: { displayName: 1, chefPoints: 1, mealsCooked: 1, streakCount: 1, telegramUserId: 1 } })
+          .sort({ chefPoints: -1, mealsCooked: -1, streakCount: -1 })
+          .limit(10)
+          .toArray();
       } catch (error) {
         console.error("[db] users leaderboard read failed", { error: safeErr(error), collection: "users" });
       }
     }
 
-    const allUsers = !db ? [...memoryStore.users.values()].sort((a, b) => b.chefPoints - a.chefPoints) : users;
-    const topPlayers = users.slice(0, 10).map((user) => ({
+    const topPlayers = topUsers.map((user, index) => ({
+      rank: index + 1,
+      telegramUserId: user.telegramUserId,
       displayName: user.displayName || "Chef",
       chefPoints: Number(user.chefPoints || 0),
       mealsCooked: Number(user.mealsCooked || 0),
@@ -380,23 +574,36 @@ export async function createGameServices(cfg) {
     let you = null;
     if (telegramUserId) {
       if (!db) {
-        const rank = allUsers.findIndex((user) => user.telegramUserId === telegramUserId) + 1;
+        const rank = rankPool.findIndex((user) => user.telegramUserId === telegramUserId) + 1;
         const current = memoryStore.users.get(telegramUserId);
         if (current) {
           you = {
             rank: rank || null,
             chefPoints: current.chefPoints || 0,
-            displayName: current.displayName || "Chef"
+            displayName: current.displayName || "Chef",
+            inTopTen: rank > 0 && rank <= 10
           };
         }
       } else {
         const current = await getUser(telegramUserId);
         if (current) {
-          const rank = 1 + await db.collection("users").countDocuments({ chefPoints: { $gt: current.chefPoints || 0 } });
+          const higherPoints = await db.collection("users").countDocuments({ chefPoints: { $gt: current.chefPoints || 0 } });
+          const samePointsAhead = await db.collection("users").countDocuments({
+            chefPoints: current.chefPoints || 0,
+            $or: [
+              { mealsCooked: { $gt: current.mealsCooked || 0 } },
+              {
+                mealsCooked: current.mealsCooked || 0,
+                streakCount: { $gt: current.streakCount || 0 }
+              }
+            ]
+          });
+          const rank = 1 + higherPoints + samePointsAhead;
           you = {
             rank,
             chefPoints: current.chefPoints || 0,
-            displayName: current.displayName || "Chef"
+            displayName: current.displayName || "Chef",
+            inTopTen: rank <= 10
           };
         }
       }
@@ -462,10 +669,17 @@ export async function createGameServices(cfg) {
     await saveMemoryTurn({ userId, chatId, role: "user", text: userText });
     const turns = await getMemoryTurns(userId, chatId);
     const lastUser = turns.filter((turn) => turn.role === "user").slice(-3).map((turn) => turn.text).join(" ");
-    const answer = lastUser.toLowerCase().includes("leaderboard")
-      ? "Use /leaderboard to see the top chefs, or open the Mini App leaderboard tab."
-      : lastUser.toLowerCase().includes("profile")
+    const lower = lastUser.toLowerCase();
+    const answer = lower.includes("leaderboard")
+      ? "Use /leaderboard to see the top chefs. The leaderboard also shows your own rank even outside the top 10."
+      : lower.includes("profile")
       ? "Use /profile for your quick stats, or open the profile tab in TapChef for the full view."
+      : lower.includes("achievement")
+      ? "Open TapChef to view badges for your first tap, 100 taps, 10 meals, and a 7 day streak."
+      : lower.includes("recipe")
+      ? "Open the recipe book tab in TapChef to unlock fictional recipes with Chef Points."
+      : lower.includes("shop") || lower.includes("theme")
+      ? "Open the shop tab in TapChef to spend fictional Chef Points on cosmetic kitchen themes."
       : `I can help with TapChef. ${botProfile.includes("/play") ? "Use /play to open the kitchen." : "Try /help."}`;
     await saveMemoryTurn({ userId, chatId, role: "assistant", text: answer });
     return answer;
@@ -475,6 +689,10 @@ export async function createGameServices(cfg) {
     bootstrapPlayer,
     tapIngredient,
     cookMeal,
+    unlockRecipe,
+    buyTheme,
+    setActiveTheme,
+    updateSettings,
     getLeaderboard,
     getPlayerSummary,
     clearMemory,

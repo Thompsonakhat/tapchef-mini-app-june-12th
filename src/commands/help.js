@@ -1,5 +1,5 @@
 export default function register(bot) {
   bot.command("help", async (ctx) => {
-    await ctx.reply("Commands: /start, /help, /play, /profile, /leaderboard, /about, /reset. Tap ingredients in the Mini App to earn Chef Points.");
+    await ctx.reply("Commands: /start, /help, /play, /profile, /leaderboard, /about, /reset. In the Mini App you can earn fictional Chef Points, unlock achievement badges, open the recipe book, buy cosmetic kitchen themes, toggle sound, and check your own leaderboard rank even if you are outside the top 10.");
   });
 }

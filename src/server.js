@@ -101,6 +101,63 @@ export async function startServer(cfg) {
     }
   });
 
+  app.post("/api/game/recipes/unlock", async (req, res) => {
+    try {
+      const telegramUserId = String(req.body?.telegramUserId || "");
+      const recipeId = String(req.body?.recipeId || "");
+      if (!telegramUserId || !recipeId) return res.status(400).json({ ok: false, error: "Missing recipe unlock data." });
+
+      const state = await services.unlockRecipe(telegramUserId, recipeId);
+      res.json({ ok: true, state });
+    } catch (error) {
+      console.error("[api] recipe unlock failed", { error: safeErr(error) });
+      res.status(400).json({ ok: false, error: safeErr(error) || "Could not unlock recipe." });
+    }
+  });
+
+  app.post("/api/game/themes/buy", async (req, res) => {
+    try {
+      const telegramUserId = String(req.body?.telegramUserId || "");
+      const themeId = String(req.body?.themeId || "");
+      if (!telegramUserId || !themeId) return res.status(400).json({ ok: false, error: "Missing theme purchase data." });
+
+      const state = await services.buyTheme(telegramUserId, themeId);
+      res.json({ ok: true, state });
+    } catch (error) {
+      console.error("[api] theme buy failed", { error: safeErr(error) });
+      res.status(400).json({ ok: false, error: safeErr(error) || "Could not buy theme." });
+    }
+  });
+
+  app.post("/api/game/themes/select", async (req, res) => {
+    try {
+      const telegramUserId = String(req.body?.telegramUserId || "");
+      const themeId = String(req.body?.themeId || "");
+      if (!telegramUserId || !themeId) return res.status(400).json({ ok: false, error: "Missing theme selection data." });
+
+      const state = await services.setActiveTheme(telegramUserId, themeId);
+      res.json({ ok: true, state });
+    } catch (error) {
+      console.error("[api] theme select failed", { error: safeErr(error) });
+      res.status(400).json({ ok: false, error: safeErr(error) || "Could not select theme." });
+    }
+  });
+
+  app.post("/api/game/settings", async (req, res) => {
+    try {
+      const telegramUserId = String(req.body?.telegramUserId || "");
+      if (!telegramUserId) return res.status(400).json({ ok: false, error: "Missing player." });
+
+      const state = await services.updateSettings(telegramUserId, {
+        soundEnabled: typeof req.body?.soundEnabled === "boolean" ? req.body.soundEnabled : undefined
+      });
+      res.json({ ok: true, state });
+    } catch (error) {
+      console.error("[api] settings failed", { error: safeErr(error) });
+      res.status(400).json({ ok: false, error: safeErr(error) || "Could not save settings." });
+    }
+  });
+
   app.get("/api/leaderboard", async (req, res) => {
     try {
       const telegramUserId = String(req.query?.telegramUserId || "");

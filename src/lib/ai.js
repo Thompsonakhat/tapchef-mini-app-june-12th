@@ -11,7 +11,9 @@ function sleep(ms) {
 async function safeRead(r) {
   const text = await r.text();
   let json = null;
-  try { json = JSON.parse(text); } catch {}
+  try {
+    json = JSON.parse(text);
+  } catch {}
   return { text, json };
 }
 
@@ -36,7 +38,6 @@ function pickModel(cfg, override) {
 }
 
 function isRetryableStatus(status) {
-  // 408: request timeout, 429: rate, 500/502/503/504 transient
   return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
@@ -48,7 +49,7 @@ function redact(s) {
 
 function web3Mode(cfg) {
   const m = String(cfg?.WEB3_CHAT_MODE || "auto").trim().toLowerCase();
-  return (m === "on" || m === "off" || m === "auto") ? m : "auto";
+  return m === "on" || m === "off" || m === "auto" ? m : "auto";
 }
 
 async function aiGet(cfg, path, opts = {}) {
@@ -71,16 +72,66 @@ async function aiGet(cfg, path, opts = {}) {
     }
     return { ok: true, status: r.status, json, text, error: null };
   } catch (e) {
-    const msg = e?.name === "AbortError" ? "AI_TIMEOUT" : (e?.message || "AI_NETWORK_ERROR");
+    const msg = e?.name === "AbortError" ? "AI_TIMEOUT" : e?.message || "AI_NETWORK_ERROR";
     return { ok: false, status: e?.name === "AbortError" ? 408 : 0, json: null, text: "", error: String(msg) };
   } finally {
     clear();
   }
 }
 
+async function aiCall(cfg, path, body = {}, opts = {}) {
+  const base = trimSlash(cfg?.COOKMYBOTS_AI_ENDPOINT || "");
+  const key = String(cfg?.COOKMYBOTS_AI_KEY || "");
+  const DEBUG = String(cfg?.AI_DEBUG || "") === "1";
+  if (!base || !key) return notConfigured("AI_NOT_CONFIGURED (missing COOKMYBOTS_AI_ENDPOINT/COOKMYBOTS_AI_KEY)");
+
+  const retries = Math.max(0, Number(opts.retries || 0));
+  const timeoutMs = Number(opts.timeoutMs || pickTimeout(cfg));
+  const url = base + String(path || "");
+
+  let attempt = 0;
+  while (true) {
+    const { ctrl, clear } = withTimeout(timeoutMs);
+    try {
+      if (DEBUG) console.log("[aiCall] ->", url, body?.mode || "");
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + key,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body || {}),
+        signal: ctrl.signal,
+      });
+
+      const { text, json } = await safeRead(r);
+      if (!r.ok) {
+        const err = json?.error || json?.message || text || "AI_ERROR";
+        if (attempt < retries && isRetryableStatus(r.status)) {
+          attempt += 1;
+          await sleep(Math.min(1500 * attempt, 4000));
+          continue;
+        }
+        return { ok: false, status: r.status, json, text, error: String(err) };
+      }
+
+      return { ok: true, status: r.status, json, text, error: null };
+    } catch (e) {
+      const status = e?.name === "AbortError" ? 408 : 0;
+      const msg = e?.name === "AbortError" ? "AI_TIMEOUT" : e?.message || "AI_NETWORK_ERROR";
+      if (attempt < retries && isRetryableStatus(status)) {
+        attempt += 1;
+        await sleep(Math.min(1500 * attempt, 4000));
+        continue;
+      }
+      return { ok: false, status, json: null, text: "", error: String(msg) };
+    } finally {
+      clear();
+    }
+  }
+}
+
 async function routeChat(cfg, userText, systemHint) {
-  // Uses the normal gateway /chat as a fast classifier.
-  // Returns: "web3" | "normal"
   const base = trimSlash(cfg?.COOKMYBOTS_AI_ENDPOINT || "");
   const key = String(cfg?.COOKMYBOTS_AI_KEY || "");
   if (!base || !key) return "normal";
@@ -102,8 +153,7 @@ async function routeChat(cfg, userText, systemHint) {
     "",
     "Extra context (bot/system hint):",
     String(systemHint || "").slice(0, 800),
-  ].join("
-");
+  ].join("\n");
 
   try {
     const r = await fetch(base + "/chat", {
@@ -117,33 +167,18 @@ async function routeChat(cfg, userText, systemHint) {
           { role: "system", content: sys },
           { role: "user", content: String(userText || "").slice(0, 2000) },
         ],
-        model: pickModel(cfg, ""), // let gateway default or AI_MODEL
-        meta: { purpose: "route" },
+        model: pickModel(cfg, ""),
       }),
       signal: ctrl.signal,
     });
 
     const { text, json } = await safeRead(r);
-    if (!r.ok) return "normal";
-
-    // Try common shapes: gateway might return {text} or OpenAI-like {choices}
-    const out =
-      (json && (json.text || json.message)) ||
-      (json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) ||
-      text ||
-      "";
-
-    const raw = String(out || "").trim();
-
-    // Parse JSON safely
+    const raw = json?.text || json?.content || json?.answer || text || "";
+    let parsed = null;
     try {
-      const obj = JSON.parse(raw);
-      const route = String(obj?.route || "").toLowerCase();
-      return route === "web3" ? "web3" : "normal";
-    } catch {
-      // If model returned non-JSON, fallback to normal
-      return "normal";
-    }
+      parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    } catch {}
+    return parsed?.route === "web3" ? "web3" : "normal";
   } catch {
     return "normal";
   } finally {
@@ -151,170 +186,47 @@ async function routeChat(cfg, userText, systemHint) {
   }
 }
 
-/**
- * Low-level gateway call.
- * Always returns: { ok, status, json, text, error }
- * - json is parsed response body (if JSON)
- * - error is a short string for logs/UI
- */
-export async function aiCall(cfg, path, body, opts = {}) {
-  const base = trimSlash(cfg?.COOKMYBOTS_AI_ENDPOINT || "");
-  const key = String(cfg?.COOKMYBOTS_AI_KEY || "");
-  const DEBUG = String(cfg?.AI_DEBUG || "") === "1";
-
-  if (!base || !key) return notConfigured("AI_NOT_CONFIGURED (missing COOKMYBOTS_AI_ENDPOINT/COOKMYBOTS_AI_KEY)");
-
-  const timeoutMs = Number(opts.timeoutMs || pickTimeout(cfg));
-  const retries = Number.isFinite(opts.retries) ? Number(opts.retries) : 1; // default 1 retry
-  const backoffMs = Number.isFinite(opts.backoffMs) ? Number(opts.backoffMs) : 750;
-
-  const url = base + String(path || "");
-  const started = Date.now();
-
-  let attempt = 0;
-  while (true) {
-    attempt++;
-
-    const { ctrl, clear } = withTimeout(timeoutMs);
-    try {
-      if (DEBUG) console.log("[aiCall] ->", url, { attempt, timeoutMs });
-
-      const r = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + key,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body || {}),
-        signal: ctrl.signal,
-      });
-
-      const { text, json } = await safeRead(r);
-
-      if (!r.ok) {
-        const err = json?.error || json?.message || text || "AI_ERROR";
-        const out = { ok: false, status: r.status, json, text, error: String(err) };
-
-        if (DEBUG) {
-          const ms = Date.now() - started;
-          console.warn("[aiCall] <- fail", { status: r.status, ms, attempt, err: redact(err) });
-        }
-
-        // Retry transient errors
-        if (attempt <= retries && isRetryableStatus(r.status)) {
-          await sleep(backoffMs * attempt);
-          continue;
-        }
-
-        return out;
-      }
-
-      if (DEBUG) {
-        const ms = Date.now() - started;
-        console.log("[aiCall] <- ok", { status: r.status, ms, attempt });
-      }
-
-      return { ok: true, status: r.status, json, text, error: null };
-    } catch (e) {
-      const msg = e?.name === "AbortError" ? "AI_TIMEOUT" : (e?.message || "AI_NETWORK_ERROR");
-      const out = { ok: false, status: e?.name === "AbortError" ? 408 : 0, json: null, text: "", error: String(msg) };
-
-      if (DEBUG) {
-        const ms = Date.now() - started;
-        console.warn("[aiCall] <- exception", { ms, attempt, err: redact(msg) });
-      }
-
-      // Retry network/timeout issues (status 0/408)
-      if (attempt <= retries) {
-        await sleep(backoffMs * attempt);
-        continue;
-      }
-
-      return out;
-    } finally {
-      clear();
-    }
-  }
+export async function aiChat(cfg, prompt, { system = "You are a helpful assistant.", meta = {}, retries = 1, model } = {}) {
+  return aiCall(
+    cfg,
+    "/chat",
+    {
+      messages: [
+        { role: "system", content: String(system || "You are a helpful assistant.") },
+        { role: "user", content: String(prompt || "") },
+      ],
+      meta: meta || undefined,
+      model: pickModel(cfg, model),
+    },
+    { retries }
+  );
 }
 
-/**
- * CHAT
- * Backward compatible:
- * 1) aiChat(cfg, "hello", { model, meta, system })
- * 2) aiChat(cfg, { messages:[...], model, meta })
- *
- * Returns: { ok, status, json, text, error }
- */
-export async function aiChat(cfg, input, opts = {}) {
-  // Signature (cfg, { messages, model, meta })
-  if (input && typeof input === "object" && Array.isArray(input.messages)) {
-    const model = pickModel(cfg, input.model);
-    return aiCall(cfg, "/chat", {
-      messages: input.messages,
-      model,
-      meta: input.meta || undefined,
-    }, opts);
-  }
-
-  // Signature (cfg, "prompt")
-  const userText = String(input || "");
-  const system = String(opts.system || "You are a helpful assistant.");
-  const model = pickModel(cfg, opts.model);
-
-  return aiCall(cfg, "/chat", {
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userText },
-    ],
-    model,
-    meta: opts.meta || undefined,
-  }, opts);
+export async function aiImage(cfg, { prompt, size = "1024x1024", meta } = {}, opts = {}) {
+  return aiCall(
+    cfg,
+    "/image",
+    {
+      prompt: String(prompt || ""),
+      size: String(size || "1024x1024"),
+      meta: meta || undefined,
+    },
+    opts
+  );
 }
 
-// IMAGE
-export async function aiImage(cfg, { prompt, size = "1024x1024", n = 1, model = "", meta } = {}, opts = {}) {
-  const m = pickModel(cfg, model);
-  return aiCall(cfg, "/image", { prompt, size, n, model: m, meta: meta || undefined }, opts);
+export async function aiVideo(cfg, { prompt, meta } = {}, opts = {}) {
+  return aiCall(
+    cfg,
+    "/video",
+    {
+      prompt: String(prompt || ""),
+      meta: meta || undefined,
+    },
+    opts
+  );
 }
 
-// VISION
-export async function aiVision(cfg, { prompt, imageUrl, model = "", meta } = {}, opts = {}) {
-  const m = pickModel(cfg, model);
-  return aiCall(cfg, "/vision", { prompt, imageUrl, model: m, meta: meta || undefined }, opts);
-}
-
-// EMBEDDINGS
-export async function aiEmbeddings(cfg, { input, model = "", meta } = {}, opts = {}) {
-  const m = pickModel(cfg, model);
-  return aiCall(cfg, "/embeddings", { input, model: m, meta: meta || undefined }, opts);
-}
-
-// WEB SEARCH
-export async function aiWebSearch(cfg, { query, meta } = {}, opts = {}) {
-  return aiCall(cfg, "/web-search", { query, meta: meta || undefined }, opts);
-}
-
-// SPEECH
-export async function aiSpeechTts(cfg, { text, voice = "alloy", format = "mp3", model = "", meta } = {}, opts = {}) {
-  const m = pickModel(cfg, model);
-  return aiCall(cfg, "/speech/tts", { text, voice, format, model: m, meta: meta || undefined }, opts);
-}
-
-export async function aiSpeechStt(cfg, { audioBase64, mimeType = "audio/mpeg", filename = "audio.mp3", durationSeconds = 0, model = "", meta } = {}, opts = {}) {
-  const m = pickModel(cfg, model);
-  return aiCall(cfg, "/speech/stt", { audioBase64, mimeType, filename, durationSeconds, model: m, meta: meta || undefined }, opts);
-}
-
-// VIDEO
-export async function aiVideoCreate(cfg, { prompt, seconds = 4, size = "1024x576", model = "", meta } = {}, opts = {}) {
-  const m = pickModel(cfg, model);
-  return aiCall(cfg, "/video/create", { prompt, seconds, size, model: m, meta: meta || undefined }, opts);
-}
-
-/**
- * Video status is GET in many gateways.
- * If your gateway is POST-only, you can keep it as GET via fetch() here.
- */
 export async function aiVideoStatus(cfg, jobId, opts = {}) {
   const base = trimSlash(cfg?.COOKMYBOTS_AI_ENDPOINT || "");
   const key = String(cfg?.COOKMYBOTS_AI_KEY || "");
@@ -344,7 +256,7 @@ export async function aiVideoStatus(cfg, jobId, opts = {}) {
 
     return { ok: true, status: r.status, json, text, error: null };
   } catch (e) {
-    const msg = e?.name === "AbortError" ? "AI_TIMEOUT" : (e?.message || "AI_NETWORK_ERROR");
+    const msg = e?.name === "AbortError" ? "AI_TIMEOUT" : e?.message || "AI_NETWORK_ERROR";
     if (DEBUG) console.warn("[aiVideoStatus] exception:", redact(msg));
     return { ok: false, status: e?.name === "AbortError" ? 408 : 0, json: null, text: "", error: String(msg) };
   } finally {
@@ -356,12 +268,16 @@ export async function aiChainGptChat(cfg, { mode = "web3", question, meta } = {}
   const m = web3Mode(cfg);
   if (m === "off") return notConfigured("WEB3_DISABLED (WEB3_CHAT_MODE=off)");
 
-  // mode: "web3" | "smart_contract_generator" | "smart_contract_auditor"
-  return aiCall(cfg, "/chaingpt/chat", {
-    mode: String(mode || "web3"),
-    question: String(question || ""),
-    meta: meta || undefined,
-  }, opts);
+  return aiCall(
+    cfg,
+    "/chaingpt/chat",
+    {
+      mode: String(mode || "web3"),
+      question: String(question || ""),
+      meta: meta || undefined,
+    },
+    opts
+  );
 }
 
 export async function aiChainGptNews(cfg, { limit = 5 } = {}, opts = {}) {
@@ -376,22 +292,25 @@ export async function aiChainGptNftImage(cfg, { prompt, model = "velogen", steps
   const m = web3Mode(cfg);
   if (m === "off") return notConfigured("WEB3_DISABLED (WEB3_CHAT_MODE=off)");
 
-  return aiCall(cfg, "/chaingpt/nft/image", {
-    prompt: String(prompt || ""),
-    model: String(model || "velogen"),
-    steps: Number(steps || 2),
-    width: Number(width || 512),
-    height: Number(height || 512),
-    enhance: String(enhance || "1x"),
-    meta: meta || undefined,
-  }, opts);
+  return aiCall(
+    cfg,
+    "/chaingpt/nft/image",
+    {
+      prompt: String(prompt || ""),
+      model: String(model || "velogen"),
+      steps: Number(steps || 2),
+      width: Number(width || 512),
+      height: Number(height || 512),
+      enhance: String(enhance || "1x"),
+      meta: meta || undefined,
+    },
+    opts
+  );
 }
 
-// Convenience: auto-route to ChainGPT if it looks web3, else normal aiChat()
 export async function aiSmartChat(cfg, userText, { system = "", meta = {}, retries = 1 } = {}) {
   const m = web3Mode(cfg);
 
-  // Forced modes
   if (m === "on") {
     return aiChainGptChat(cfg, { mode: "web3", question: String(userText || ""), meta }, { retries });
   }
@@ -399,7 +318,6 @@ export async function aiSmartChat(cfg, userText, { system = "", meta = {}, retri
     return aiChat(cfg, String(userText || ""), { system: system || "You are a helpful assistant.", meta, retries });
   }
 
-  // AUTO mode: AI decides route
   const route = await routeChat(cfg, userText, system);
 
   if (route === "web3") {
@@ -408,4 +326,3 @@ export async function aiSmartChat(cfg, userText, { system = "", meta = {}, retri
 
   return aiChat(cfg, String(userText || ""), { system: system || "You are a helpful assistant.", meta, retries });
 }
-

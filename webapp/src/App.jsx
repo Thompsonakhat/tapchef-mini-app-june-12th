@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 function tg() {
   return window.Telegram?.WebApp;
@@ -21,6 +21,29 @@ function cx(...parts) {
   return parts.filter(Boolean).join(" ");
 }
 
+const THEME_STYLES = {
+  classic_kitchen: {
+    hero: "bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.35),_rgba(26,16,39,0.95)_55%)]",
+    ingredient: "bg-[radial-gradient(circle_at_30%_30%,_#fdba74,_#ea580c_60%,_#7c2d12)]",
+    glow: "shadow-[0_18px_50px_rgba(249,115,22,0.35)]"
+  },
+  copper_cozy: {
+    hero: "bg-[radial-gradient(circle_at_top,_rgba(251,146,60,0.45),_rgba(69,26,3,0.92)_58%)]",
+    ingredient: "bg-[radial-gradient(circle_at_30%_30%,_#fed7aa,_#c2410c_60%,_#7c2d12)]",
+    glow: "shadow-[0_18px_50px_rgba(194,65,12,0.42)]"
+  },
+  midnight_diner: {
+    hero: "bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.38),_rgba(17,24,39,0.96)_58%)]",
+    ingredient: "bg-[radial-gradient(circle_at_30%_30%,_#93c5fd,_#2563eb_58%,_#1e1b4b)]",
+    glow: "shadow-[0_18px_50px_rgba(37,99,235,0.35)]"
+  },
+  garden_glow: {
+    hero: "bg-[radial-gradient(circle_at_top,_rgba(74,222,128,0.34),_rgba(20,83,45,0.94)_58%)]",
+    ingredient: "bg-[radial-gradient(circle_at_30%_30%,_#bbf7d0,_#16a34a_58%,_#14532d)]",
+    glow: "shadow-[0_18px_50px_rgba(22,163,74,0.34)]"
+  }
+};
+
 export default function App() {
   const webApp = useMemo(() => tg(), []);
   const [state, setState] = useState(null);
@@ -29,7 +52,11 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [leaderboard, setLeaderboard] = useState({ topPlayers: [], you: null });
+  const [toast, setToast] = useState("");
+  const toastTimer = useRef(null);
+  const audioRef = useRef(null);
   const colors = themeVars();
+  const activeTheme = THEME_STYLES[state?.activeThemeId] || THEME_STYLES.classic_kitchen;
 
   useEffect(() => {
     document.documentElement.style.setProperty("--bg", colors.bg);
@@ -66,6 +93,7 @@ export default function App() {
         if (cancelled) return;
         if (!json.ok) throw new Error(json.error || "Could not open your kitchen.");
         setState(json.state);
+        showAchievementToast(json.state?.newlyUnlockedAchievementIds || [], json.state);
         await fetchLeaderboard(json.state.telegramUserId);
       } catch (err) {
         if (!cancelled) setError(err.message || "Could not open your kitchen.");
@@ -79,6 +107,48 @@ export default function App() {
     };
   }, [webApp]);
 
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  function playSound(kind = "tap") {
+    if (!state?.settings?.soundEnabled) return;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      if (!audioRef.current) audioRef.current = new AudioContextClass();
+      const ctx = audioRef.current;
+      if (ctx.state === "suspended") ctx.resume?.();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = kind === "unlock" ? "triangle" : "sine";
+      oscillator.frequency.value = kind === "unlock" ? 660 : 420;
+      gain.gain.value = kind === "unlock" ? 0.04 : 0.025;
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + (kind === "unlock" ? 0.16 : 0.08));
+    } catch {}
+  }
+
+  function showToast(message) {
+    if (!message) return;
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(""), 2600);
+  }
+
+  function showAchievementToast(newIds, nextState) {
+    if (!newIds?.length || !nextState?.achievements?.length) return;
+    const unlocked = nextState.achievements.filter((item) => newIds.includes(item.id));
+    if (unlocked.length) {
+      playSound("unlock");
+      showToast(`Badge unlocked: ${unlocked.map((item) => item.badge).join(", ")}`);
+    }
+  }
+
   async function fetchLeaderboard(telegramUserId) {
     try {
       const resp = await fetch(`/api/leaderboard?telegramUserId=${encodeURIComponent(telegramUserId || "")}`);
@@ -87,12 +157,14 @@ export default function App() {
     } catch {}
   }
 
-  async function postAction(url, body) {
+  async function postAction(url, body, opts = {}) {
     if (!state?.telegramUserId) return;
     setBusy(true);
     setError("");
     try {
-      webApp?.HapticFeedback?.impactOccurred?.("light");
+      if (opts.haptic !== false) {
+        webApp?.HapticFeedback?.impactOccurred?.("light");
+      }
       const resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -101,6 +173,9 @@ export default function App() {
       const json = await resp.json();
       if (!json.ok) throw new Error(json.error || "Action failed.");
       setState(json.state);
+      showAchievementToast(json.state?.newlyUnlockedAchievementIds || [], json.state);
+      if (opts.toast) showToast(opts.toast);
+      if (opts.sound) playSound(opts.sound);
       await fetchLeaderboard(json.state.telegramUserId);
     } catch (err) {
       setError(err.message || "Action failed.");
@@ -110,17 +185,30 @@ export default function App() {
     }
   }
 
+  async function handleToggleSound() {
+    if (!state?.telegramUserId) return;
+    const nextSound = !(state?.settings?.soundEnabled !== false);
+    await postAction("/api/game/settings", {
+      telegramUserId: state.telegramUserId,
+      soundEnabled: nextSound
+    }, {
+      haptic: false,
+      toast: nextSound ? "Sound on" : "Sound off"
+    });
+  }
+
   const mealsReady = state ? Math.floor((state.daily.tappedToday - state.daily.mealsCookedToday * 20) / 20) : 0;
+  const unlockedAchievements = state?.achievements?.filter((item) => item.unlocked) || [];
 
   return (
     <div className="min-h-screen px-4 pt-4 pb-8" style={{ paddingTop: "max(1rem, env(safe-area-inset-top))", paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
       <div className="mx-auto w-full max-w-md space-y-4">
-        <header className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.35),_rgba(26,16,39,0.95)_55%)] p-5 shadow-2xl">
+        <header className={cx("rounded-[28px] border border-white/10 p-5 shadow-2xl", activeTheme.hero)}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-orange-200/80">TapChef</p>
               <h1 className="mt-1 text-3xl font-black leading-none">Cook fast. Tap smart.</h1>
-              <p className="mt-2 text-sm text-orange-50/80">Earn Chef Points, finish daily tasks, and keep your kitchen streak alive.</p>
+              <p className="mt-2 text-sm text-orange-50/80">Earn Chef Points, unlock badges, collect recipes, and style your kitchen.</p>
             </div>
             <div className="rounded-2xl bg-white/10 px-3 py-2 text-right backdrop-blur">
               <div className="text-[11px] uppercase tracking-wide text-orange-100/70">Streak</div>
@@ -129,22 +217,30 @@ export default function App() {
           </div>
         </header>
 
-        <nav className="grid grid-cols-4 gap-2 rounded-2xl bg-white/5 p-1">
+        <nav className="grid grid-cols-3 gap-2 rounded-2xl bg-white/5 p-1 sm:grid-cols-6">
           {[
             ["game", "Game"],
             ["tasks", "Tasks"],
-            ["profile", "Profile"],
+            ["achievements", "Badges"],
+            ["recipes", "Recipes"],
+            ["shop", "Shop"],
             ["leaders", "Leaders"]
           ].map(([key, label]) => (
             <button
               key={key}
-              className={cx("min-h-[44px] rounded-xl text-sm font-semibold transition", tab === key ? "bg-orange-500 text-white shadow-lg" : "text-orange-50/80")}
+              className={cx("min-h-[44px] rounded-xl px-2 text-sm font-semibold transition", tab === key ? "bg-orange-500 text-white shadow-lg" : "text-orange-50/80")}
               onClick={() => setTab(key)}
             >
               {label}
             </button>
           ))}
         </nav>
+
+        {toast ? (
+          <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-50">
+            {toast}
+          </div>
+        ) : null}
 
         {loading ? (
           <section className="space-y-3 rounded-3xl bg-white/6 p-4">
@@ -169,15 +265,28 @@ export default function App() {
                 </div>
 
                 <div className="rounded-[32px] border border-white/10 bg-white/8 p-5 text-center shadow-xl">
+                  <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-black/20 px-4 py-3 text-sm text-orange-50/85">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-orange-100/60">Kitchen theme</div>
+                      <div className="font-semibold">{state.themes.find((item) => item.active)?.name || "Classic Kitchen"}</div>
+                    </div>
+                    <button
+                      className={cx("min-h-[44px] rounded-xl px-4 text-sm font-bold", state.settings?.soundEnabled !== false ? "bg-emerald-500/25 text-emerald-50" : "bg-white/10 text-orange-50/75")}
+                      disabled={busy}
+                      onClick={handleToggleSound}
+                    >
+                      Sound {state.settings?.soundEnabled !== false ? "On" : "Off"}
+                    </button>
+                  </div>
                   <p className="text-sm text-orange-100/70">Main ingredient</p>
                   <button
-                    className="mx-auto mt-4 flex h-48 w-48 items-center justify-center rounded-full border border-orange-200/25 bg-[radial-gradient(circle_at_30%_30%,_#fdba74,_#ea580c_60%,_#7c2d12)] text-7xl shadow-[0_18px_50px_rgba(249,115,22,0.35)] transition active:scale-95 disabled:opacity-60"
+                    className={cx("mx-auto mt-4 flex h-48 w-48 items-center justify-center rounded-full border border-orange-200/25 text-7xl transition active:scale-95 disabled:opacity-60", activeTheme.ingredient, activeTheme.glow)}
                     disabled={busy || state.currentEnergy <= 0}
-                    onClick={() => postAction("/api/game/tap", { telegramUserId: state.telegramUserId, taps: 1 })}
+                    onClick={() => postAction("/api/game/tap", { telegramUserId: state.telegramUserId, taps: 1 }, { sound: "tap" })}
                   >
                     🍅
                   </button>
-                  <p className="mt-4 text-sm text-orange-50/80">Each tap uses 1 energy and gives 1 Chef Point.</p>
+                  <p className="mt-4 text-sm text-orange-50/80">Each tap uses 1 energy and gives 1 fictional Chef Point.</p>
                   <div className="mt-4 flex items-center justify-between rounded-2xl bg-black/20 px-4 py-3 text-sm text-orange-50/85">
                     <span>Meals ready</span>
                     <span className="font-bold">{Math.max(0, mealsReady)}</span>
@@ -185,7 +294,7 @@ export default function App() {
                   <button
                     className="mt-4 min-h-[48px] w-full rounded-2xl bg-orange-500 px-4 text-base font-bold text-white shadow-lg transition active:scale-[0.99] disabled:opacity-60"
                     disabled={busy || mealsReady < 1}
-                    onClick={() => postAction("/api/game/cook", { telegramUserId: state.telegramUserId })}
+                    onClick={() => postAction("/api/game/cook", { telegramUserId: state.telegramUserId }, { sound: "unlock" })}
                   >
                     Cook Meal
                   </button>
@@ -212,15 +321,85 @@ export default function App() {
               </section>
             ) : null}
 
-            {tab === "profile" ? (
-              <section className="space-y-3 rounded-3xl border border-white/10 bg-white/8 p-4">
-                <ProfileRow label="Chef" value={state.displayName} />
-                <ProfileRow label="Chef Points" value={state.chefPoints} />
-                <ProfileRow label="Energy" value={`${state.currentEnergy}/${state.maxEnergy}`} />
-                <ProfileRow label="Total taps" value={state.totalTaps} />
-                <ProfileRow label="Meals cooked" value={state.mealsCooked} />
-                <ProfileRow label="Daily streak" value={state.streakCount} />
-                <ProfileRow label="Tasks done" value={`${state.tasks.filter((task) => task.completed).length}/${state.tasks.length}`} />
+            {tab === "achievements" ? (
+              <section className="space-y-3">
+                <div className="rounded-3xl border border-white/10 bg-white/8 p-4">
+                  <p className="text-sm text-orange-50/70">Unlocked badges</p>
+                  <p className="mt-1 text-2xl font-black">{unlockedAchievements.length}/{state.achievements.length}</p>
+                </div>
+                {state.achievements.map((achievement) => (
+                  <div key={achievement.id} className={cx("rounded-3xl border p-4", achievement.unlocked ? "border-amber-300/30 bg-amber-400/10" : "border-white/10 bg-white/8")}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold">{achievement.label}</p>
+                        <p className="mt-1 text-sm text-orange-50/70">{achievement.description}</p>
+                        <p className="mt-2 text-xs uppercase tracking-wide text-amber-200/80">Badge: {achievement.badge}</p>
+                      </div>
+                      <span className={cx("rounded-full px-3 py-1 text-xs font-bold", achievement.unlocked ? "bg-emerald-400/20 text-emerald-100" : "bg-white/10 text-orange-50/70")}>{achievement.unlocked ? "Unlocked" : `Goal ${achievement.target}`}</span>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            ) : null}
+
+            {tab === "recipes" ? (
+              <section className="space-y-3">
+                {state.recipes.map((recipe) => (
+                  <div key={recipe.id} className="rounded-3xl border border-white/10 bg-white/8 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold">{recipe.name}</p>
+                        <p className="mt-1 text-sm text-orange-50/70">{recipe.rewardText}</p>
+                        <p className="mt-2 text-xs uppercase tracking-wide text-orange-100/70">Cost {recipe.cost} Chef Points</p>
+                      </div>
+                      <button
+                        className={cx("min-h-[44px] rounded-xl px-4 text-sm font-bold", recipe.unlocked ? "bg-emerald-500/20 text-emerald-100" : "bg-orange-500 text-white disabled:opacity-60")}
+                        disabled={busy || recipe.unlocked || state.chefPoints < recipe.cost}
+                        onClick={() => postAction("/api/game/recipes/unlock", { telegramUserId: state.telegramUserId, recipeId: recipe.id }, { toast: `${recipe.name} unlocked`, sound: "unlock" })}
+                      >
+                        {recipe.unlocked ? "Unlocked" : "Unlock"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            ) : null}
+
+            {tab === "shop" ? (
+              <section className="space-y-3">
+                <div className="rounded-3xl border border-white/10 bg-white/8 p-4 text-sm text-orange-50/75">
+                  Kitchen shop items are cosmetic only. Spend fictional Chef Points to change your look.
+                </div>
+                {state.themes.map((theme) => (
+                  <div key={theme.id} className="rounded-3xl border border-white/10 bg-white/8 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold">{theme.name}</p>
+                        <p className="mt-1 text-sm text-orange-50/70">{theme.description}</p>
+                        <p className="mt-2 text-xs uppercase tracking-wide text-orange-100/70">{theme.cost === 0 ? "Included" : `Cost ${theme.cost} Chef Points`}</p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {!theme.owned ? (
+                          <button
+                            className="min-h-[44px] rounded-xl bg-orange-500 px-4 text-sm font-bold text-white disabled:opacity-60"
+                            disabled={busy || state.chefPoints < theme.cost}
+                            onClick={() => postAction("/api/game/themes/buy", { telegramUserId: state.telegramUserId, themeId: theme.id }, { toast: `${theme.name} added to your kitchen`, sound: "unlock" })}
+                          >
+                            Buy
+                          </button>
+                        ) : (
+                          <button
+                            className={cx("min-h-[44px] rounded-xl px-4 text-sm font-bold", theme.active ? "bg-emerald-500/20 text-emerald-100" : "bg-white/10 text-orange-50")}
+                            disabled={busy || theme.active}
+                            onClick={() => postAction("/api/game/themes/select", { telegramUserId: state.telegramUserId, themeId: theme.id }, { toast: `${theme.name} is now active` })}
+                          >
+                            {theme.active ? "Active" : "Use"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </section>
             ) : null}
 
@@ -229,11 +408,14 @@ export default function App() {
                 <div className="rounded-3xl border border-white/10 bg-white/8 p-4">
                   <p className="text-sm text-orange-50/70">Your rank</p>
                   <p className="mt-1 text-2xl font-black">{leaderboard.you?.rank || "Unranked"}</p>
+                  <p className="mt-1 text-xs text-orange-50/70">
+                    {leaderboard.you?.inTopTen ? "You are in the top 10." : "Your personal rank still shows here even outside the top 10."}
+                  </p>
                 </div>
-                {leaderboard.topPlayers.length ? leaderboard.topPlayers.map((player, index) => (
-                  <div key={`${player.displayName}-${index}`} className="flex items-center justify-between rounded-3xl border border-white/10 bg-white/8 p-4">
+                {leaderboard.topPlayers.length ? leaderboard.topPlayers.map((player) => (
+                  <div key={`${player.telegramUserId || player.displayName}-${player.rank}`} className={cx("flex items-center justify-between rounded-3xl border p-4", leaderboard.you?.displayName === player.displayName && leaderboard.you?.rank === player.rank ? "border-orange-300/30 bg-orange-500/10" : "border-white/10 bg-white/8")}>
                     <div>
-                      <p className="text-sm text-orange-50/70">#{index + 1}</p>
+                      <p className="text-sm text-orange-50/70">#{player.rank}</p>
                       <p className="text-base font-semibold">{player.displayName}</p>
                     </div>
                     <div className="text-right">
@@ -242,6 +424,27 @@ export default function App() {
                     </div>
                   </div>
                 )) : <EmptyCard text="No chefs on the board yet. Start tapping to claim the first spot." />}
+                {leaderboard.you && !leaderboard.you.inTopTen ? (
+                  <div className="rounded-3xl border border-orange-300/20 bg-orange-500/10 p-4">
+                    <p className="text-sm text-orange-50/70">Your position</p>
+                    <p className="mt-1 text-base font-semibold">#{leaderboard.you.rank} {leaderboard.you.displayName}</p>
+                    <p className="mt-1 text-sm text-orange-50/80">{leaderboard.you.chefPoints} Chef Points</p>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {tab === "profile" ? (
+              <section className="space-y-3 rounded-3xl border border-white/10 bg-white/8 p-4">
+                <ProfileRow label="Chef" value={state.displayName} />
+                <ProfileRow label="Chef Points" value={state.chefPoints} />
+                <ProfileRow label="Energy" value={`${state.currentEnergy}/${state.maxEnergy}`} />
+                <ProfileRow label="Total taps" value={state.totalTaps} />
+                <ProfileRow label="Meals cooked" value={state.mealsCooked} />
+                <ProfileRow label="Daily streak" value={state.streakCount} />
+                <ProfileRow label="Badges unlocked" value={`${unlockedAchievements.length}/${state.achievements.length}`} />
+                <ProfileRow label="Recipes unlocked" value={`${state.recipes.filter((item) => item.unlocked).length}/${state.recipes.length}`} />
+                <ProfileRow label="Sound" value={state.settings?.soundEnabled !== false ? "On" : "Off"} />
               </section>
             ) : null}
           </>

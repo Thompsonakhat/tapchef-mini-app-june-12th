@@ -2,74 +2,32 @@
   "projectId": "b848ea9a-627f-4b35-bd75-a4607fbd06f6",
   "commands": [
     {
-      "command": "/about",
-      "description": "Explains what TapChef is and how it works.",
-      "usage": "/about",
-      "examples": [
-        "User: /about → Bot: TapChef is a playful cooking game for Telegram."
-      ],
-      "example": "User: /about → Bot: TapChef is a playful cooking game for Telegram.",
-      "notes": "Mentions fictional Chef Points only."
+      "name": "about",
+      "file": "src/commands/about.js"
     },
     {
-      "command": "/help",
-      "description": "Shows the public command list and quick gameplay help.",
-      "usage": "/help",
-      "examples": [
-        "User: /help → Bot: Commands: /start, /help, /play, /profile, /leaderboard, /about, /reset."
-      ],
-      "example": "User: /help → Bot: Commands: /start, /help, /play, /profile, /leaderboard, /about, /reset.",
-      "notes": "Kept short for Telegram readability."
+      "name": "help",
+      "file": "src/commands/help.js"
     },
     {
-      "command": "/leaderboard",
-      "description": "Shows the top TapChef players by Chef Points.",
-      "usage": "/leaderboard",
-      "examples": [
-        "User: /leaderboard → Bot: Top chefs: 1. Mia 140 | 2. Jay 115 | 3. Ana 98. Your rank: 4."
-      ],
-      "example": "User: /leaderboard → Bot: Top chefs: 1. Mia 140 | 2. Jay 115 | 3. Ana 98. Your rank: 4.",
-      "notes": "Also available in the Mini App leaderboard tab."
+      "name": "leaderboard",
+      "file": "src/commands/leaderboard.js"
     },
     {
-      "command": "/play",
-      "description": "Opens the TapChef Mini App.",
-      "usage": "/play",
-      "examples": [
-        "User: /play → Bot: Open TapChef and start cooking."
-      ],
-      "example": "User: /play → Bot: Open TapChef and start cooking.",
-      "notes": "Requires PUBLIC_BASE_URL so the bot can build the /app URL."
+      "name": "play",
+      "file": "src/commands/play.js"
     },
     {
-      "command": "/profile",
-      "description": "Shows the player’s Chef Points, energy, streak, meals, and task progress.",
-      "usage": "/profile",
-      "examples": [
-        "User: /profile → Bot: Chef Points: 25 | Energy: 18/30 | Streak: 2 | Meals: 1 | Tasks: 2/3"
-      ],
-      "example": "User: /profile → Bot: Chef Points: 25 | Energy: 18/30 | Streak: 2 | Meals: 1 | Tasks: 2/3",
-      "notes": "Uses MongoDB when available, or in-memory fallback if not configured."
+      "name": "profile",
+      "file": "src/commands/profile.js"
     },
     {
-      "command": "/reset",
-      "description": "Clears the user’s saved chat memory.",
-      "usage": "/reset",
-      "examples": [
-        "User: /reset → Bot: Your chat memory is cleared."
-      ],
-      "example": "User: /reset → Bot: Your chat memory is cleared.",
-      "notes": "This resets long-term memory for bot chat context, not game progress."
+      "name": "reset",
+      "file": "src/commands/reset.js"
     },
     {
-      "command": "/start",
-      "description": "Welcomes the player and explains TapChef in a short, friendly way.",
-      "usage": "/start",
-      "examples": [
-        "User: /start → Bot: Welcome to TapChef. Tap ingredients, cook meals, finish daily tasks, and climb the leaderboard."
-      ],
-      "example": "User: /start → Bot: Welcome to TapChef. Tap ingredients, cook meals, finish daily tasks, and climb the leaderboard.",
-      "notes": "Shows the Mini App button when PUBLIC_BASE_URL is configured."
+      "name": "start",
+      "file": "src/commands/start.js"
     }
   ],
   "aiMessages": [
